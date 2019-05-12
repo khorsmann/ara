@@ -1,6 +1,6 @@
-#  Copyright (c) 2017 Red Hat, Inc.
+#  Copyright (c) 2018 Red Hat, Inc.
 #
-#  This file is part of ARA: Ansible Run Analysis.
+#  This file is part of ARA Records Ansible.
 #
 #  ARA is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -17,10 +17,15 @@
 
 import ara.models as m
 import random
+import sys
 
 from ansible import __version__ as ansible_version
-from mock import MagicMock
 from oslo_serialization import jsonutils
+if sys.version_info >= (3, 3):
+    from unittest.mock import MagicMock
+else:
+    from mock import MagicMock
+
 
 FAKE_PLAYBOOK_CONTENT = """---
 - name: ARA unit tests

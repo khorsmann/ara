@@ -1,6 +1,6 @@
-#  Copyright (c) 2017 Red Hat, Inc.
+#  Copyright (c) 2018 Red Hat, Inc.
 #
-#  This file is part of ARA: Ansible Run Analysis.
+#  This file is part of ARA Records Ansible.
 #
 #  ARA is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,8 @@
 #  You should have received a copy of the GNU General Public License
 #  along with ARA.  If not, see <http://www.gnu.org/licenses/>.
 
+import logging
+
 from ara import models
 from ara import utils
 from flask import abort
@@ -26,6 +28,7 @@ from flask import render_template
 from flask import url_for
 
 reports = Blueprint('reports', __name__)
+log = logging.getLogger(__name__)
 
 
 # This is a flask-frozen workaround in order to generate an index.html
@@ -107,17 +110,19 @@ def ajax_parameters(playbook):
     results['data'].append(['playbook_path', playbook.path])
     results['data'].append(['ansible_version', playbook.ansible_version])
 
+    log.debug('Loading playbook parameters')
     if playbook.options:
         for option in playbook.options:
             results['data'].append([option, playbook.options[option]])
 
+    log.debug('%s playbook parameters loaded' % len(results['data']))
     return jsonify(results)
 
 
 @reports.route('/reports/ajax/plays/<playbook>.txt')
 def ajax_plays(playbook):
     plays = (models.Play.query
-             .filter(models.Play.playbook_id.in_([playbook])))
+             .filter(models.Play.playbook_id == playbook))
     if not utils.fast_count(plays):
         abort(404)
 
@@ -128,6 +133,7 @@ def ajax_plays(playbook):
     results = dict()
     results['data'] = list()
 
+    log.debug('Loading plays')
     for play in plays:
         name = u"<span class='pull-left'>{0}</span>".format(play.name)
         start = date.render(date=play.time_start)
@@ -135,13 +141,14 @@ def ajax_plays(playbook):
         duration = time.render(time=play.duration)
         results['data'].append([name, start, end, duration])
 
+    log.debug('%s plays loaded' % len(results['data']))
     return jsonify(results)
 
 
 @reports.route('/reports/ajax/records/<playbook>.txt')
 def ajax_records(playbook):
     records = (models.Data.query
-               .filter(models.Data.playbook_id.in_([playbook])))
+               .filter(models.Data.playbook_id == playbook))
     if not utils.fast_count(records):
         abort(404)
 
@@ -152,21 +159,22 @@ def ajax_records(playbook):
     results = dict()
     results['data'] = list()
 
+    log.debug('Loading records')
     for record in records:
         key = record_key.render(record=record)
         value = record_value.render(record=record)
 
         results['data'].append([key, value])
 
+    log.debug('%s records loaded' % len(results['data']))
     return jsonify(results)
 
 
 @reports.route('/reports/ajax/results/<playbook>.txt')
 def ajax_results(playbook):
-    task_results = (models.TaskResult.query
-                    .join(models.Task)
-                    .filter(models.Task.playbook_id.in_([playbook])))
-    if not utils.fast_count(task_results):
+    tasks_in_playbook = models.Task.query.filter(
+        models.Task.playbook_id == playbook)
+    if not utils.fast_count(tasks_in_playbook):
         abort(404)
 
     jinja = current_app.jinja_env
@@ -178,22 +186,33 @@ def ajax_results(playbook):
     results = dict()
     results['data'] = list()
 
-    for result in task_results:
-        name = name_cell.render(result=result)
-        host = result.host.name
-        action = action_link.render(result=result)
-        elapsed = time.render(time=result.task.offset_from_playbook)
-        duration = time.render(time=result.duration)
-        status = task_status_link.render(result=result)
+    log.debug('Loading results')
+    for task in tasks_in_playbook:
+        task_results = task.task_results
+        for result in task_results:
+            name = name_cell.render(tags=result.task.tags,
+                                    name=result.task.name)
+            host = result.host.name
+            action = action_link.render(file=result.task.file,
+                                        lineno=result.task.lineno,
+                                        action=result.task.action)
+            elapsed = time.render(time=result.task.offset_from_playbook)
+            duration = time.render(time=result.duration)
+            status = task_status_link.render(
+                id=result.id, derived_status=result.derived_status)
+            results['data'].append([name, host, action,
+                                    elapsed, duration, status])
+        del task_results
+        del task
 
-        results['data'].append([name, host, action, elapsed, duration, status])
+    log.debug('%s results loaded' % len(results['data']))
     return jsonify(results)
 
 
 @reports.route('/reports/ajax/stats/<playbook>.txt')
 def ajax_stats(playbook):
     stats = (models.Stats.query
-             .filter(models.Stats.playbook_id.in_([playbook])))
+             .filter(models.Stats.playbook_id == playbook))
     if not utils.fast_count(stats):
         abort(404)
 
@@ -203,8 +222,9 @@ def ajax_stats(playbook):
     results = dict()
     results['data'] = list()
 
+    log.debug('Loading host statistics and facts')
     for stat in stats:
-        host = host_link.render(stat=stat)
+        host = host_link.render(host=stat.host)
         ok = stat.ok if stat.ok >= 1 else 0
         changed = stat.changed if stat.changed >= 1 else 0
         failed = stat.failed if stat.failed >= 1 else 0
@@ -214,4 +234,5 @@ def ajax_stats(playbook):
         data = [host, ok, changed, failed, skipped, unreachable]
         results['data'].append(data)
 
+    log.debug('%s host stats and facts loaded' % len(results['data']))
     return jsonify(results)

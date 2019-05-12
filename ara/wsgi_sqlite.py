@@ -1,6 +1,6 @@
-#  Copyright (c) 2017 Red Hat, Inc.
+#  Copyright (c) 2018 Red Hat, Inc.
 #
-#  This file is part of ARA: Ansible Run Analysis.
+#  This file is part of ARA Records Ansible.
 #
 #  ARA is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -51,18 +51,6 @@ import shutil
 import six
 import time
 
-if (int(os.getenv('ARA_WSGI_USE_VIRTUALENV', 0)) == 1 and
-   os.getenv('ARA_WSGI_VIRTUALENV_PATH')):
-    activate_this = os.getenv('ARA_WSGI_VIRTUALENV_PATH')
-    if six.PY2:
-        execfile(activate_this, dict(__file__=activate_this))  # nosec
-    else:
-        exec(open(activate_this).read())  # nosec
-
-TMPDIR_MAX_AGE = int(os.getenv('ARA_WSGI_TMPDIR_MAX_AGE', 3600))
-LOG_ROOT = os.getenv('ARA_WSGI_LOG_ROOT', '/srv/static/logs')
-DATABASE_DIRECTORY = os.getenv('ARA_WSGI_DATABASE_DIRECTORY', 'ara-report')
-
 logger = logging.getLogger('ara.wsgi_sqlite')
 if not logger.handlers:
     logging.basicConfig(format='%(name)s:%(levelname)s:%(message)s')
@@ -82,6 +70,26 @@ def bad_request(environ, start_response, message):
 
 
 def application(environ, start_response):
+    # Apache SetEnv variables are passed only in environ variable
+    if (int(environ.get('ARA_WSGI_USE_VIRTUALENV', 0)) == 1 and
+       environ.get('ARA_WSGI_VIRTUALENV_PATH')):
+        # Backwards compatibility, we did not always suffix activate_this.py
+        activate_this = environ.get('ARA_WSGI_VIRTUALENV_PATH')
+        if 'activate_this.py' not in activate_this:
+            activate_this = os.path.join(activate_this, 'bin/activate_this.py')
+
+        if six.PY2:
+            execfile(activate_this, dict(__file__=activate_this))  # nosec
+        else:
+            exec(open(activate_this).read())  # nosec
+
+    TMPDIR_MAX_AGE = int(environ.get('ARA_WSGI_TMPDIR_MAX_AGE', 3600))
+    LOG_ROOT = environ.get('ARA_WSGI_LOG_ROOT', '/srv/static/logs')
+    DATABASE_DIRECTORY = environ.get(
+        'ARA_WSGI_DATABASE_DIRECTORY',
+        'ara-report'
+    )
+
     request = environ['REQUEST_URI']
     match = re.search('/(?P<path>.*/{}/)'.format(DATABASE_DIRECTORY), request)
     if not match:
@@ -118,10 +126,23 @@ def application(environ, start_response):
 
     # Path to the ARA database
     os.environ['ARA_DATABASE'] = 'sqlite:///{}'.format(database)
+    # The intent is that we are dealing with databases that already exist.
+    # Therefore, we're not really interested in creating the database and
+    # making sure that the SQL migrations are done. Toggle that off.
+    # This needs to be a string, we're setting an environment variable
+    os.environ['ARA_AUTOCREATE_DATABASE'] = 'false'
+
+    msg = 'Request {request} mapped to {database} with root {root}'.format(
+        request=request,
+        database='sqlite:///{}'.format(database),
+        root=match.group('path')
+    )
+    logger.debug(msg)
 
     from ara.webapp import create_app
     try:
         app = create_app()
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///{}'.format(database)
         app.config['APPLICATION_ROOT'] = match.group('path')
         return app(environ, start_response)
     except Exception as e:

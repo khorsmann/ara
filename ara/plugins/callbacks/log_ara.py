@@ -1,6 +1,6 @@
-#  Copyright (c) 2017 Red Hat, Inc.
+#  Copyright (c) 2018 Red Hat, Inc.
 #
-#  This file is part of ARA: Ansible Run Analysis.
+#  This file is part of ARA Records Ansible.
 #
 #  ARA is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -17,27 +17,40 @@
 
 from __future__ import (absolute_import, division, print_function)
 
-import flask
 import itertools
 import logging
 import os
+import warnings
 
 from ansible import __version__ as ansible_version
-from ansible.plugins.callback import CallbackBase
+
 from ara import models
 from ara.models import db
 from ara.webapp import create_app
 from datetime import datetime
 from distutils.version import LooseVersion
+from flask import current_app
 from oslo_serialization import jsonutils
 
-# To retrieve Ansible CLI options
-try:
-    from __main__ import cli
-except ImportError:
-    cli = None
+with warnings.catch_warnings():
+    warnings.filterwarnings('ignore')
+    from ansible.plugins.callback import CallbackBase
 
-LOG = logging.getLogger('ara.callback')
+# Ansible CLI options are now in ansible.context in >= 2.8
+# https://github.com/ansible/ansible/commit/afdbb0d9d5bebb91f632f0d4a1364de5393ba17a
+try:
+    from ansible import context
+    cli_options = {key: value for key, value in context.CLIARGS.items()}
+except ImportError:
+    # < 2.8 doesn't have ansible.context
+    try:
+        from __main__ import cli
+        cli_options = cli.options.__dict__
+    except ImportError:
+        # using API without CLI
+        cli_options = {}
+
+log = logging.getLogger('ara.callback')
 app = create_app()
 
 
@@ -62,7 +75,8 @@ class CallbackModule(CallbackBase):
     def __init__(self):
         super(CallbackModule, self).__init__()
 
-        if not flask.current_app:
+        log.debug('Initializing callback')
+        if not current_app:
             ctx = app.app_context()
             ctx.push()
 
@@ -76,10 +90,7 @@ class CallbackModule(CallbackBase):
         self.play_counter = itertools.count()
         self.task_counter = itertools.count()
 
-        if cli:
-            self._options = cli.options
-        else:
-            self._options = None
+        log.debug('Callback initialized')
 
     def get_or_create_host(self, hostname):
         try:
@@ -120,7 +131,7 @@ class CallbackModule(CallbackBase):
 
             file_.content = content
         except IOError:
-            LOG.warn('failed to open %s for reading', path)
+            log.warning('failed to open %s for reading', path)
 
         return file_
 
@@ -130,7 +141,7 @@ class CallbackModule(CallbackBase):
         host completes. It is responsible for logging a single
         'TaskResult' record to the database.
         """
-        LOG.debug('logging task result for task %s (%s), host %s',
+        log.debug('Logging task result for task %s (%s), host %s',
                   self.task.name, self.task.id, result._host.get_name())
 
         # An include_role task might end up putting an IncludeRole object
@@ -165,6 +176,21 @@ class CallbackModule(CallbackBase):
             if not isinstance(ignore_errors, bool):
                 ignore_errors = True if ignore_errors == "yes" else False
 
+        if self.task.action == 'setup' and 'ansible_facts' in results:
+            # Potentially sanitize some Ansible facts to prevent them from
+            # being saved both in the host facts and in the task results.
+            for fact in app.config['ARA_IGNORE_FACTS']:
+                if fact in results['ansible_facts']:
+                    msg = "Not saved by ARA as configured by ARA_IGNORE_FACTS"
+                    results['ansible_facts'][fact] = msg
+
+            values = jsonutils.dumps(results['ansible_facts'])
+            facts = models.HostFacts(values=values)
+            host.facts = facts
+
+            db.session.add(facts)
+            db.session.commit()
+
         self.taskresult = models.TaskResult(
             task=self.task,
             host=host,
@@ -182,19 +208,11 @@ class CallbackModule(CallbackBase):
         db.session.add(self.taskresult)
         db.session.commit()
 
-        if self.task.action == 'setup' and 'ansible_facts' in result._result:
-            values = jsonutils.dumps(result._result['ansible_facts'])
-            facts = models.HostFacts(values=values)
-            host.facts = facts
-
-            db.session.add(facts)
-            db.session.commit()
-
     def log_stats(self, stats):
         """
         Logs playbook statistics to the database.
         """
-        LOG.debug('logging stats')
+        log.debug('logging stats')
         hosts = sorted(stats.processed.keys())
         for hostname in hosts:
             host = self.get_or_create_host(hostname)
@@ -215,7 +233,7 @@ class CallbackModule(CallbackBase):
         Marks the completion time of the currently active task.
         """
         if self.task is not None:
-            LOG.debug('closing task %s (%s)',
+            log.debug('Closing task %s (%s)',
                       self.task.name,
                       self.task.id)
             self.task.stop()
@@ -230,7 +248,7 @@ class CallbackModule(CallbackBase):
         Marks the completion time of the currently active play.
         """
         if self.play is not None:
-            LOG.debug('closing play %s (%s)', self.play.name, self.play.id)
+            log.debug('Closing play %s (%s)', self.play.name, self.play.id)
             self.play.stop()
             db.session.add(self.play)
             db.session.commit()
@@ -242,7 +260,7 @@ class CallbackModule(CallbackBase):
         Marks the completion time of the currently active playbook.
         """
         if self.playbook is not None:
-            LOG.debug('closing playbook %s', self.playbook.path)
+            log.debug('Closing playbook %s', self.playbook.path)
             self.playbook.stop()
             self.playbook.complete = True
             db.session.add(self.playbook)
@@ -276,7 +294,7 @@ class CallbackModule(CallbackBase):
                                   is_handler=False):
         self.close_task()
 
-        LOG.debug('starting task %s (action %s)',
+        log.debug('Starting task %s (action %s)',
                   task.name, task.action)
         pathspec = task.get_path()
         if pathspec:
@@ -308,22 +326,18 @@ class CallbackModule(CallbackBase):
 
     def v2_playbook_on_start(self, playbook):
         path = os.path.abspath(playbook._file_name)
-        if self._options is not None:
-            options = self._options.__dict__.copy()
-        else:
-            options = {}
 
         # Potentially sanitize some user-specified keys
         for parameter in app.config['ARA_IGNORE_PARAMETERS']:
-            if parameter in options:
-                msg = "Parameter not saved by ARA due to configuration"
-                options[parameter] = msg
+            if parameter in cli_options:
+                msg = "Not saved by ARA as configured by ARA_IGNORE_PARAMETERS"
+                cli_options[parameter] = msg
 
-        LOG.debug('starting playbook %s', path)
+        log.debug('Starting playbook %s', path)
         self.playbook = models.Playbook(
             ansible_version=ansible_version,
             path=path,
-            options=options
+            options=cli_options
         )
 
         self.playbook.start()
@@ -333,21 +347,14 @@ class CallbackModule(CallbackBase):
         file_ = self.get_or_create_file(path)
         file_.is_playbook = True
 
-        # We need to persist the playbook id so it can be used by the modules
-        data = {
-            'playbook': {
-                'id': self.playbook.id
-            }
-        }
-        tmpfile = os.path.join(app.config['ARA_TMP_DIR'], 'ara.json')
-        with open(tmpfile, 'w') as file:
-            file.write(jsonutils.dumps(data))
+        # Cache the playbook data in memory for ara_record/ara_read
+        current_app._cache['playbook'] = self.playbook.id
 
     def v2_playbook_on_play_start(self, play):
         self.close_task()
         self.close_play()
 
-        LOG.debug('starting play %s', play.name)
+        log.debug('Starting play %s', play.name)
         if self.play is not None:
             self.play.stop()
 
@@ -368,5 +375,5 @@ class CallbackModule(CallbackBase):
         self.close_play()
         self.close_playbook()
 
-        LOG.debug('closing database')
+        log.debug('Closing database')
         db.session.close()

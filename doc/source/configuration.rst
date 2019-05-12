@@ -12,39 +12,42 @@ To begin using ARA, you'll first need to set up Ansible so it knows about the
 the ARA :ref:`callback <faq_callback>` and, if necessary, the :ref:`ara_record <ara_record>` and :ref:`ara_read <ara_read>` modules.
 
 The callback and modules are bundled when installing ARA but you need to know
-where they have been installed in order to let Ansible know where they are located.
+where they have been installed in order to let Ansible know where they are
+located.
 
-.. tip::
+This location will be different depending on your operating system, how you are
+installing ARA and whether you are using Python 2 or Python 3.
 
-   The location where ARA will be depends on your operating system and how it
-   is installed.
-   Here's some examples of where ARA can be found:
+ARA ships a set of convenience Python modules to help you configure Ansible to
+use it.
 
-   - ``/usr/lib/python2.7/site-packages/ara``
-   - ``/usr/lib/python3.5/site-packages/ara``
-   - ``$VIRTUAL_ENV/lib/python2.7/site-packages/ara``
+They can be used like so::
 
-   If you're not sure where ARA will end up being installed, you can use this
-   snippet to print its location. It works in both Python 2 and Python 3::
+    $ python -m ara.setup.path
+    /usr/lib/python2.7/site-packages/ara
 
-      python -c "import os,ara; print(os.path.dirname(ara.__file__))"
+    $ python -m ara.setup.action_plugins
+    /usr/lib/python2.7/site-packages/ara/plugins/actions
+
+    $ python -m ara.setup.callback_plugins
+    /usr/lib/python2.7/site-packages/ara/plugins/callbacks
 
 Using ansible.cfg
 ~~~~~~~~~~~~~~~~~
 
-Set up your `ansible.cfg`_ file to seek the callback and modules in the appropriate
-directories::
+This sets up a new `ansible.cfg`_ file to load the callbacks and modules from
+the appropriate locations::
 
-    $ export ara_location=$(python -c "import os,ara; print(os.path.dirname(ara.__file__))")
-    $ cat > ansible.cfg <<EOF
+    $ python -m ara.setup.ansible | tee ansible.cfg
     [defaults]
-    # callback_plugins configuration is required for the ARA callback
-    callback_plugins = $ara_location/plugins/callbacks
+    callback_plugins=/usr/lib/python2.7/site-packages/ara/plugins/callbacks
+    action_plugins=/usr/lib/python2.7/site-packages/ara/plugins/actions
 
-    # action_plugins and library configuration is required for the ara_record and ara_read modules
-    action_plugins = $ara_location/plugins/actions
-    library = $ara_location/plugins/modules
-    EOF
+Or alternatively, if you have a customized `ansible.cfg`_ file, you can retrieve
+only what you need using the other helpers such as the following:
+
+- ``python -m ara.setup.callback_plugins``
+- ``python -m ara.setup.action_plugins``
 
 .. _ansible.cfg: https://docs.ansible.com/ansible/intro_configuration.html#configuration-file
 
@@ -53,12 +56,15 @@ Using environment variables
 
 Depending on the context and your use case, configuring Ansible using
 `environment variables`_ instead of an ``ansible.cfg`` file might be more convenient.
-Here's how you can set up Ansible to seek out ARA's callback and modules::
 
-    $ export ara_location=$(python -c "import os,ara; print(os.path.dirname(ara.__file__))")
-    $ export ANSIBLE_CALLBACK_PLUGINS=$ara_location/plugins/callbacks
-    $ export ANSIBLE_ACTION_PLUGINS=$ara_location/plugins/actions
-    $ export ANSIBLE_LIBRARY=$ara_location/plugins/modules
+ARA provides a helper module that prints out the necessary export commands::
+
+    $ python -m ara.setup.env
+    export ANSIBLE_CALLBACK_PLUGINS=/usr/lib/python2.7/site-packages/ara/plugins/callbacks
+    export ANSIBLE_ACTION_PLUGINS=/usr/lib/python2.7/site-packages/ara/plugins/actions
+
+Note that the module doesn't actually run those exports, you'll want to run them
+yourself, add them in a bash script or a bashrc, etc.
 
 .. _environment variables: https://docs.ansible.com/ansible/intro_configuration.html#environmental-configuration
 
@@ -105,6 +111,8 @@ Parameters and their defaults
 +-------------------------------+----------------------------+-------------------------------------------+
 | ARA_PORT_                     | port                       | 9191                                      |
 +-------------------------------+----------------------------+-------------------------------------------+
+| ARA_APPLICATION_ROOT_         | application_root           | /                                         |
++-------------------------------+----------------------------+-------------------------------------------+
 | ARA_LOG_CONFIG_               | logconfig                  | None                                      |
 +-------------------------------+----------------------------+-------------------------------------------+
 | ARA_LOG_FILE_                 | logfile                    | ~/.ara/ara.log                            |
@@ -113,7 +121,7 @@ Parameters and their defaults
 +-------------------------------+----------------------------+-------------------------------------------+
 | ARA_LOG_FORMAT_               | logformat                  | %(asctime)s - %(levelname)s - %(message)s |
 +-------------------------------+----------------------------+-------------------------------------------+
-| ARA_SQL_DEBUG_                | sqldebug                   | False                                     |
+| ARA_IGNORE_FACTS_             | ignore_facts               | ansible_env                               |
 +-------------------------------+----------------------------+-------------------------------------------+
 | ARA_IGNORE_PARAMETERS_        | ignore_parameters          | extra_vars                                |
 +-------------------------------+----------------------------+-------------------------------------------+
@@ -127,6 +135,20 @@ Parameters and their defaults
 +-------------------------------+----------------------------+-------------------------------------------+
 | ARA_RESULT_PER_PAGE_          | result_per_page            | 25                                        |
 +-------------------------------+----------------------------+-------------------------------------------+
+| SQLALCHEMY_ECHO_              | sqlalchemy_echo            | False                                     |
++-------------------------------+----------------------------+-------------------------------------------+
+| SQLALCHEMY_POOL_SIZE_         | sqlalchemy_pool_size       | None (default managed by flask-sqlalchemy)|
++-------------------------------+----------------------------+-------------------------------------------+
+| SQLALCHEMY_POOL_TIMEOUT_      | sqlalchemy_pool_timeout    | None (default managed by flask-sqlalchemy)|
++-------------------------------+----------------------------+-------------------------------------------+
+| SQLALCHEMY_POOL_RECYCLE_      | sqlalchemy_pool_recycle    | None (default managed by flask-sqlalchemy)|
++-------------------------------+----------------------------+-------------------------------------------+
+
+.. _SQLALCHEMY_ECHO: http://flask-sqlalchemy.pocoo.org/2.3/config/#configuration-keys
+.. _SQLALCHEMY_POOL_SIZE: http://flask-sqlalchemy.pocoo.org/2.3/config/#configuration-keys
+.. _SQLALCHEMY_POOL_TIMEOUT: http://flask-sqlalchemy.pocoo.org/2.3/config/#configuration-keys
+.. _SQLALCHEMY_POOL_RECYCLE: http://flask-sqlalchemy.pocoo.org/2.3/config/#configuration-keys
+
 
 ARA_DIR
 ~~~~~~~
@@ -213,6 +235,18 @@ the ``ara-manage runserver`` command.
 It is equivalent to the ``-p`` or ``--port`` argument of the
 ``ara-manage runserver`` command.
 
+ARA_APPLICATION_ROOT
+~~~~~~~~~~~~~~~~~~~~
+
+The path at which the web application should be loaded.
+
+The default behavior is to load the application at the root (``/``) of your
+host.
+Change this parameter if you'd like to host your application elsewhere.
+
+For example, ``/ara`` would make the application available under
+``http://host/ara`` instead of ``http://host/``.
+
 ARA_LOG_CONFIG
 ~~~~~~~~~~~~~~
 
@@ -246,10 +280,18 @@ ARA_LOG_FORMAT
 
 The log format of the logs.
 
-ARA_SQL_DEBUG
-~~~~~~~~~~~~~
+ARA_IGNORE_FACTS
+~~~~~~~~~~~~~~~~
 
-Enables the SQLAlchemy echo verbose mode.
+When Ansible gathers host facts or uses the setup module, your host facts are
+recorded by ARA and are also available as part of your reports.
+
+By default, only the host fact ``ansible_env`` is not saved due to the
+sensitivity of the information it could contain such as tokens, passwords or
+otherwise privileged information.
+
+This configuration allows you to customize what ARA will and will not save.
+It is a list, provided by comma-separated values.
 
 ARA_IGNORE_PARAMETERS
 ~~~~~~~~~~~~~~~~~~~~~
@@ -262,7 +304,7 @@ If, for example, you use `extra_vars`_ to send a password or secret variable
 to your playbooks, it is likely you don't want this saved in ARA's database.
 
 This configuration allows you to customize what ARA will and will not save.
-It is a list, provided by a comma-separated values.
+It is a list, provided by comma-separated values.
 
 .. _extra_vars: https://docs.ansible.com/ansible/playbooks_variables.html#passing-variables-on-the-command-line
 

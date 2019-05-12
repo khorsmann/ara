@@ -1,8 +1,8 @@
-ARA: Ansible Run Analysis
-=========================
+ARA Records Ansible
+===================
 .. image:: doc/source/_static/ara-with-icon.png
 
-ARA records Ansible playbook runs and makes the recorded data available and
+ARA Records Ansible playbook runs and makes the recorded data available and
 intuitive for users and systems.
 
 ARA doesn't run your playbooks for you: it integrates with Ansible as a
@@ -15,7 +15,7 @@ you're good to go.
 .. image:: doc/source/_static/reports.png
 
 .. _install ARA: https://ara.readthedocs.io/en/latest/installation.html
-.. _configure Ansible to use ARA: http://ara.readthedocs.io/en/latest/configuration.html
+.. _configure Ansible to use ARA: https://ara.readthedocs.io/en/latest/configuration.html
 
 Quickstart
 ==========
@@ -24,10 +24,14 @@ Quickstart
 
     # Install ARA
     pip install ara
-    # Make Ansible use the ARA callback plugin regardless of python version
-    export ANSIBLE_CALLBACK_PLUGINS="$(python -c 'import os,ara; print(os.path.dirname(ara.__file__))')/plugins/callbacks"
-    # Run your playbook
+
+    # Load environment variables that inform Ansible to use ARA regardless
+    # of its location or python version
+    source <(python -m ara.setup.env)
+
+    # Run your Ansible playbook or commands
     # ansible-playbook myplaybook.yml
+
     # Start the ARA standalone webserver
     ara-manage runserver
     # Browse http://127.0.0.1:9191
@@ -49,8 +53,8 @@ ARA has four main components:
 .. _ARA: https://github.com/openstack/ara
 .. _Ansible: https://www.ansible.com/
 .. _Ansible callback plugin: https://ara.readthedocs.io/en/latest/configuration.html#ansible
-.. _ara_record: http://ara.readthedocs.io/en/latest/usage.html#using-the-ara-record-module
-.. _ara_read: http://ara.readthedocs.io/en/latest/usage.html#using-the-ara-read-module
+.. _ara_record: https://ara.readthedocs.io/en/latest/usage.html#using-the-ara-record-module
+.. _ara_read: https://ara.readthedocs.io/en/latest/usage.html#using-the-ara-read-module
 .. _CLI client: https://ara.readthedocs.io/en/latest/usage.html#querying-the-database-with-the-cli
 .. _dynamic, database-driven web interface: https://ara.readthedocs.io/en/latest/faq.html#what-does-the-web-interface-look-like
 .. _generated and served from static files: https://ara.readthedocs.io/en/latest/usage.html#generating-a-static-html-version-of-the-web-application
@@ -71,9 +75,11 @@ Otherwise, screenshots highlighting some of ARA's features are available in
 Community and getting help
 ==========================
 
-The ARA community hangs out on IRC and Slack.
-The two chats are bridged with slack-irc_ which allows everyone to talk to each
-other.
+You can chat with the ARA community on Slack and IRC.
+The two are transparently bridged with teamchat_ which broadcasts messages from
+one platform to the other.
+
+In addition, you can also find ARA on Twitter: `@ARecordsAnsible <https://twitter.com/ARecordsAnsible>`_
 
 **IRC**
 
@@ -82,10 +88,10 @@ other.
 
 **Slack**
 
-- https://ara-community.slack.com
-- Join with the `Slack invitation <https://join.slack.com/t/ara-community/shared_invite/MjMxNzI4ODAxMDQxLTE1MDM4MDEzMTEtNzU1NTUwMTcyOQ>`_
+- https://arecordsansible.slack.com
+- Join with the `Slack invitation <https://join.slack.com/t/arecordsansible/shared_invite/enQtMjMxNzI4ODAxMDQxLWU4MmZhZTI4ZjRjOTUwZTM2MzM3MzcwNDU1YzFmNzRlMzI0NTUzNDY1MWJlNThhM2I4ZTViZjUwZTRkNTBiM2I>`_
 
-.. _slack-irc: https://github.com/ekmartin/slack-irc
+.. _teamchat: https://github.com/dmsimard/teamchat
 .. _irc.freenode.net: https://webchat.freenode.net/
 
 Contributing, testing, issues and bugs
@@ -109,17 +115,17 @@ contributing !
 Each commit to ARA is reviewed and also rigorously tested to prevent
 regressions. Here's our current testing coverage:
 
-+------------------+--------+--------+----------+--------+--------+
-| -                | Fedora | CentOS | OpenSUSE | Debian | Ubuntu |
-+==================+========+========+==========+========+========+
-| Ansible 2.2.3.0  |        |        |          |    X   |        |
-+------------------+--------+--------+----------+--------+--------+
-| Ansible 2.3.2.0  |        |    X   |          |        |        |
-+------------------+--------+--------+----------+--------+--------+
-| Ansible "latest" |    X   |        |     X    |        |    X   |
-+------------------+--------+--------+----------+--------+--------+
-| Ansible "devel"  |    X   |        |          |        |    X   |
-+------------------+--------+--------+----------+--------+--------+
++-----------------+--------+--------+----------+--------+--------+
+| -               | Fedora | CentOS | OpenSUSE | Debian | Ubuntu |
++=================+========+========+==========+========+========+
+| Ansible 2.5.14  |        |  py27  |          |        |        |
++-----------------+--------+--------+----------+--------+--------+
+| Ansible 2.6.12  |        |        |          |  py27  |        |
++-----------------+--------+--------+----------+--------+--------+
+| Ansible 2.7.6   |  py37  |        |   py27   |        |  py36  |
++-----------------+--------+--------+----------+--------+--------+
+| Ansible "devel" |  py37  |        |          |        |  py36  |
++-----------------+--------+--------+----------+--------+--------+
 
 You might also be interested in reading the project manifesto_ in order to have
 a good understanding of the project's core values and philosophy.
@@ -152,7 +158,7 @@ Copyright
 
 ::
 
-    Copyright (c) 2017 Red Hat, Inc.
+    Copyright (c) 2018 Red Hat, Inc.
 
     ARA is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by

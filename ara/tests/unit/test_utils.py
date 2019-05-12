@@ -1,6 +1,6 @@
-#  Copyright (c) 2017 Red Hat, Inc.
+#  Copyright (c) 2018 Red Hat, Inc.
 #
-#  This file is part of ARA: Ansible Run Analysis.
+#  This file is part of ARA Records Ansible.
 #
 #  ARA is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -91,7 +91,9 @@ class TestUtils(TestAra):
                 child = child['nodes'][0]
                 self.assertEqual(child['text'], 'main.yml')
                 self.assertEqual(child['dataAttr']['load'],
-                                 ctx['task_file'].id)
+                                 ctx['task_file'].id + '/')
             else:
                 self.assertEqual(f['text'], 'playbook.yml')
-                self.assertEqual(f['dataAttr']['load'], ctx['pb_file'].id)
+                self.assertEqual(
+                    f['dataAttr']['load'], ctx['pb_file'].id + '/'
+                )

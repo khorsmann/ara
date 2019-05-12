@@ -1,6 +1,6 @@
-#  Copyright (c) 2017 Red Hat, Inc.
+#  Copyright (c) 2018 Red Hat, Inc.
 #
-#  This file is part of ARA: Ansible Run Analysis.
+#  This file is part of ARA Records Ansible.
 #
 #  ARA is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
 
 import functools
 import hashlib
+import logging
 import uuid
 import zlib
 
@@ -25,13 +26,17 @@ from datetime import timedelta
 from oslo_utils import encodeutils
 from oslo_serialization import jsonutils
 
+import warnings
 # This makes all the exceptions available as "models.<exception_name>".
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm.exc import *  # NOQA
-from sqlalchemy.orm import backref
-import sqlalchemy.types as types
+with warnings.catch_warnings():
+    warnings.filterwarnings('ignore')
+    from flask_sqlalchemy import SQLAlchemy
+    from sqlalchemy.orm.exc import *  # NOQA
+    from sqlalchemy.orm import backref
+    import sqlalchemy.types as types
 
 db = SQLAlchemy()
+log = logging.getLogger('ara.models')
 
 
 def mkuuid():
@@ -126,7 +131,7 @@ class CompressedData(types.TypeDecorator):
 
     http://docs.sqlalchemy.org/en/latest/core/custom_types.html
     """
-    impl = types.Binary
+    impl = types.LargeBinary
 
     def process_bind_param(self, value, dialect):
         return zlib.compress(encodeutils.to_utf8(jsonutils.dumps(value)))
@@ -149,7 +154,7 @@ class CompressedText(types.TypeDecorator):
 
     http://docs.sqlalchemy.org/en/latest/core/custom_types.html
     """
-    impl = types.Binary
+    impl = types.LargeBinary
 
     def process_bind_param(self, value, dialect):
         return zlib.compress(encodeutils.to_utf8(value))
@@ -196,9 +201,47 @@ class Playbook(db.Model, TimedEntity):
 
     @property
     def file(self):
-        return (self.files
-                .filter(File.playbook_id == self.id)
-                .filter(File.is_playbook)).one()
+        # Handle rare occurrences where an ansible-playbook run may have been
+        # interrupted after the playbook was created but the file has not yet.
+        try:
+            return (self.files
+                    .filter(File.playbook_id == self.id)
+                    .filter(File.is_playbook)).one()
+        except NoResultFound:  # noqa
+            log.warning(
+                'Recovering from NoResultFound file on playbook %s' % self.id
+            )
+
+            # Option #1, file was created but is_playbook did not have time to
+            # be set
+            try:
+                playbook_file = (self.files
+                                 .filter(File.playbook_id == self.id)
+                                 .filter(File.path == self.path)).one()
+                playbook_file.is_playbook = True
+                log.warning('Recovered file reference for playbook %s' %
+                            self.id)
+                return playbook_file
+            except NoResultFound:  # noqa
+                # Option #2: The playbook was created but was interrupted
+                # before the file was created. Create it.
+                playbook_file = File(
+                    path=self.path,
+                    playbook=self,
+                    is_playbook=True
+                )
+                msg = 'Playbook file could not be recovered'
+                sha1 = content_sha1(msg)
+                content = FileContent.query.get(sha1)
+
+                if content is None:
+                    content = FileContent(content=msg)
+                playbook_file.content = content
+                db.session.add(playbook_file)
+                db.session.commit()
+                log.warning('Recovered file reference for playbook %s' %
+                            self.id)
+                return playbook_file
 
     def __repr__(self):
         return '<Playbook %s>' % self.path

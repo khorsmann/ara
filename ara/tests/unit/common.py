@@ -1,6 +1,6 @@
-#  Copyright (c) 2017 Red Hat, Inc.
+#  Copyright (c) 2018 Red Hat, Inc.
 #
-#  This file is part of ARA: Ansible Run Analysis.
+#  This file is part of ARA Records Ansible.
 #
 #  ARA is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -29,12 +29,14 @@ class TestAra(unittest.TestCase):
     Common setup/teardown for ARA tests
     """
     def setUp(self):
+        # TODO: Fix this, it's not used in create_app() and makes the databases
+        # live on the filesystem rather than memory.
         self.config = {
             'SQLALCHEMY_DATABASE_URI': 'sqlite://',
             'TESTING': True
         }
 
-        self.app = w.create_app(self)
+        self.app = w.create_app()
         self.app_context = self.app.app_context()
         self.app_context.push()
         self.client = self.app.test_client()
@@ -60,7 +62,7 @@ def ansible_run(complete=True, failed=False, gather_facts=True,
           gather_facts: yes
           tasks:
             - name: Fake task
-              include: some/path/main.yml
+              include_tasks: some/path/main.yml
 
             - name: Record something
               ara_record:

@@ -1,7 +1,7 @@
 #!/bin/bash
-#  Copyright (c) 2017 Red Hat, Inc.
+#  Copyright (c) 2018 Red Hat, Inc.
 #
-#  This file is part of ARA: Ansible Run Analysis.
+#  This file is part of ARA Records Ansible.
 #
 #  ARA is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -108,10 +108,16 @@ if [[ $ARA_TEST_PGSQL == 1 ]]; then
     pip install psycopg2
 fi
 
+# TODO: Improve the testing of those
+echo "python -m ara.setup.path: $(python -m ara.setup.path)"
+echo "python -m ara.setup.callback_plugins: $(python -m ara.setup.callback_plugins)"
+echo "python -m ara.setup.action_plugins: $(python -m ara.setup.action_plugins)"
+echo "python -m ara.setup.env: $(python -m ara.setup.env)"
+echo "python -m ara.setup.ansible: $(python -m ara.setup.ansible)"
+
 # Setup ARA
-export ANSIBLE_CALLBACK_PLUGINS="ara/plugins/callbacks"
-export ANSIBLE_ACTION_PLUGINS="ara/plugins/actions"
-export ANSIBLE_LIBRARY="ara/plugins/modules"
+export ANSIBLE_CALLBACK_PLUGINS="$(python -m ara.setup.callback_plugins)"
+export ANSIBLE_ACTION_PLUGINS="$(python -m ara.setup.action_plugins)"
 export ARA_DATABASE="${DATABASE}"
 
 # Run linters

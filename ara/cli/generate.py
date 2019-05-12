@@ -1,6 +1,6 @@
-#  Copyright (c) 2017 Red Hat, Inc.
+#  Copyright (c) 2018 Red Hat, Inc.
 #
-#  This file is part of ARA: Ansible Run Analysis.
+#  This file is part of ARA Records Ansible.
 #
 #  ARA is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -63,7 +63,7 @@ class GenerateHtml(Command):
         if args.playbook is not None:
             self.app.ara.config['ARA_PLAYBOOK_OVERRIDE'] = args.playbook
 
-        self.log.warn('Generating static files at %s...', args.path)
+        self.log.warning('Generating static files at %s...', args.path)
         filterwarnings('ignore', '.*', NotFoundWarning)
         if self.app.ara.config['ARA_IGNORE_EMPTY_GENERATION']:
             filterwarnings('ignore', '.*', MissingURLGeneratorWarning)
@@ -87,7 +87,17 @@ class GenerateHtml(Command):
 
 
 class GenerateJunit(Command):
-    """ Generate junit stream from ara data """
+    """ Generate junit stream from ara data
+
+    Tasks show up in the report as follows:
+        'ok': pass
+        'failed' with 'EXPECTED FAILURE' in the task name: pass
+        'failed' with 'TOGGLE RESULT' in the task name: pass
+        'ok' with 'TOGGLE RESULT' in the task name: failure
+        'failed' due to an exception: error
+        'failed' for other reasons: failure
+        'skipped': skipped"
+    """
     log = logging.getLogger(__name__)
 
     def get_parser(self, prog_name):
@@ -139,8 +149,11 @@ class GenerateJunit(Command):
                 stdout=result_str)
             if result.status == 'skipped':
                 test_case.add_skipped_info(message=result.result)
-            elif (result.status in ('failed', 'unreachable') and
-                    result.ignore_errors is False):
+            elif ((result.status in ('failed', 'unreachable') and
+                    result.ignore_errors is False and
+                    'EXPECTED FAILURE' not in task_name and
+                    'TOGGLE RESULT' not in task_name) or
+                    (result.status == 'ok' and 'TOGGLE RESULT' in task_name)):
                 test_case.add_failure_info(message=result.result)
             test_cases.append(test_case)
         test_suite = TestSuite('Ansible Tasks', test_cases)

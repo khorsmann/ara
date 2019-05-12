@@ -1,6 +1,6 @@
-#  Copyright (c) 2017 Red Hat, Inc.
+#  Copyright (c) 2018 Red Hat, Inc.
 #
-#  This file is part of ARA: Ansible Run Analysis.
+#  This file is part of ARA Records Ansible.
 #
 #  ARA is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -136,7 +136,7 @@ def generate_tree(root, paths, mock_os):
             node['dataAttr'] = {
                 'toggle': 'modal',
                 'target': '#file_modal',
-                'load': paths[full_path]
+                'load': paths[full_path] + '/'
             }
         tree.append(node)
     return tree
@@ -154,7 +154,7 @@ def playbook_treeview(playbook):
 
     paths = {}
     for file in files:
-        fs.CreateFile(file.path)
+        fs.create_file(file.path)
         paths[file.path] = file.id
 
     return jsonutils.dumps(generate_tree('/', paths, mock_os),
